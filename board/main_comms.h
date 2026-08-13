@@ -44,7 +44,14 @@ static int get_health_pkt(void *dat) {
 
   health->sound_output_level_pkt = sound_output_level;
 
-  health->controls_allowed_lateral_pkt = controls_allowed || controls_allowed_lateral;
+  // TJA/MADS physical-button platforms: report the exclusive lateral latch.
+  // OR'ing controls_allowed would let MRCC/longitudinal look like panda lateral
+  // auth and poison the userspace handshake (late TRUE / restart-while-MRCC-on).
+  if (mads_physical_button_only) {
+    health->controls_allowed_lateral_pkt = controls_allowed_lateral;
+  } else {
+    health->controls_allowed_lateral_pkt = controls_allowed || controls_allowed_lateral;
+  }
   health->controls_allowed_longitudinal_pkt = controls_allowed;
 
   return sizeof(*health);
