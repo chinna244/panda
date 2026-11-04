@@ -40,6 +40,7 @@ void set_safety_mode(uint16_t mode, uint16_t param) {
   }
   safety_tx_blocked = 0;
   safety_rx_invalid = 0;
+  bool close_relay = false;
 
   switch (mode_copy) {
     case SAFETY_SILENT:
@@ -68,7 +69,8 @@ void set_safety_mode(uint16_t mode, uint16_t param) {
       can_silent = false;
       break;
     default:
-      set_intercept_relay(true, false);
+      // the relay is closed below, after the CAN cores are back up
+      close_relay = true;
       heartbeat_counter = 0U;
       heartbeat_lost = false;
       current_board->set_can_mode(CAN_MODE_NORMAL);
@@ -76,6 +78,18 @@ void set_safety_mode(uint16_t mode, uint16_t param) {
       break;
   }
   can_init_all();
+
+  // Close the relay only once the CAN cores are running again. Re-initialising the cores
+  // waits on each one (up to CAN_INIT_TIMEOUT_MS per step, inside this call). With the relay
+  // already closed, nothing is forwarded during that wait and the ECUs behind the harness
+  // lose their stream: on a Mazda a 1.1 s stall here cut the camera's steering frames (0x243)
+  // from the EPS, which latched LKAS_FAULT for the rest of the drive. Until the relay closes
+  // the camera stays wired straight to the car, so a slow re-init costs nothing.
+  if (close_relay) {
+    set_intercept_relay(true, false);
+    // the relay changed state just now: restart the stock-ECU transition window
+    safety_mode_cnt = 0U;
+  }
 }
 
 bool is_car_safety_mode(uint16_t mode) {
